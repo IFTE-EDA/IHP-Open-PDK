@@ -192,4 +192,38 @@ X1 PLUS MINUS bulk cap_rfcmim l={l} w={w}
     <.PortSym -10 20 2 180>
     <Text -24 -15 12 #000000 0 "+">
   </Symbol>
+</Component> 
+
+<Component inductor2>
+  <Description>
+    Author: [Your Name], February 2025
+    Contact: [Your Email]
+    Description: Inductor with specified width, diameter, and turns
+  </Description>
+  
+  <Model>
+    .Def:IHP_PDK_basic_components_inductor2 LA LB w="6.1e-6" d="60e-6" n="1"
+    .Def:End
+  </Model>
+  
+  <Spice>*
+    .SUBCKT IHP_PDK_basic_components_inductor2 LA LB w=6.1e-6 d=60e-6 n=1
+    X1 LA LB inductor w={w} d={d} n={n}
+    .ENDS
+  </Spice>
+  
+  <VerilogModel> </VerilogModel>
+  <VHDLModel> </VHDLModel>
+
+  <Symbol>
+    <Circle 0 0 30 #0000ff 3 1 #c0c0c0 1 0>
+    <.ID 50 -26 inductor2 "1=w=6.1u==" "1=d=60u==" "1=n=1==">
+    <Line -20 0 -10 0 #00007f 2 1>
+    <Line 10 0 20 0 #00007f 2 1>
+    <.PortSym -20 0 1 0>
+    <.PortSym 20 0 2 0>
+  </Symbol>
 </Component>
+
+
+

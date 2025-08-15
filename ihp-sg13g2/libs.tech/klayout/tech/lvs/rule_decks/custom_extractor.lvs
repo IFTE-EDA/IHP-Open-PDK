@@ -27,7 +27,9 @@ $unit = dbu
 # === GeneralNTerminalExtractor ===
 class GeneralNTerminalExtractor < RBA::GenericDeviceExtractor
   # Extraction of N terminal devices - General Class
-
+  
+   $inductor_counter = 1
+ 
   def initialize(name, num)
     # Initialize the extractor with a device name and number of terminals.
     #
@@ -49,6 +51,8 @@ class GeneralNTerminalExtractor < RBA::GenericDeviceExtractor
     elsif name.downcase.include?('varicap')
       @reg_dev = DeviceCustomVaractor.new(name, @num)
     elsif name.downcase.start_with?('ind')
+      @reg_dev = DeviceCustomInd.new(name, @num)
+    elsif name.downcase.start_with?('cind')
       @reg_dev = DeviceCustomInd.new(name, @num)
     else
       raise ArgumentError, "Custom-Class for #{name} device is not supported yet, please recheck"
@@ -78,11 +82,44 @@ class GeneralNTerminalExtractor < RBA::GenericDeviceExtractor
     conn.connect(meas_mk, dev_mk)
 
     # Sub connection for some devices
-    if name.downcase.start_with?('ind') || name.downcase.include?('varicap')
+    if name.downcase.start_with?('ind') || name.downcase.include?('varicap') || name.downcase.start_with?('cind')
       sub_mk = layers[4]
       conn.connect(sub_mk, dev_mk)
     end
-
+    
+    if name.downcase.start_with?('ind') || name.downcase.start_with?('cind')
+      tm2_mk = layers[5]
+      tm1_mk = layers[6]
+      conn.connect(dev_mk, tm2_mk)
+      conn.connect(dev_mk, tm1_mk)
+    end
+    
+    if name.downcase.start_with?('cind')
+      m1_mk = layers[7]
+      m2_mk = layers[8]
+      m3_mk = layers[9]
+      m4_mk = layers[10]
+      m5_mk = layers[11] 
+      topvia2 = layers[12]
+      topvia1 = layers[13]
+      via1 = layers[14]
+      via2 = layers[15]
+      via3 = layers[16]
+      via4 = layers[17]
+      
+      conn.connect(dev_mk, m1_mk)
+      conn.connect(dev_mk, m2_mk)
+      conn.connect(dev_mk, m3_mk)
+      conn.connect(dev_mk, m4_mk)
+      conn.connect(dev_mk, m5_mk)
+      conn.connect(dev_mk, topvia2)
+      conn.connect(dev_mk, topvia1)  
+      conn.connect(dev_mk, via1)
+      conn.connect(dev_mk, via2)
+      conn.connect(dev_mk, via3)
+      conn.connect(dev_mk, via4)
+    end
+    
     conn
   end
 
@@ -91,16 +128,31 @@ class GeneralNTerminalExtractor < RBA::GenericDeviceExtractor
     #
     # Args:
     #   layer_geometry (Array): Array of layer geometries.
-    dev, ports, meas_mk, dev_mk, sub_mk = layer_geometry
-
+    dev, ports, meas_mk, dev_mk, sub_mk, tm2_mk, tm1_mk, m1_mk, m2_mk, m3_mk, m4_mk, m5_mk, topvia2, topvia1, via1, via2, via3, via4, = layer_geometry
     dev_mk.merged.each do |region|
       if ports.size != @num
         $logger.info("#{@name} device terminals (#{@num}) don't touch device marker correctly")
         $logger.info("No. of ports exist for #{@name} is #{ports.size}, should be #{@num}")
       else
         device = create_device
-        set_device_parameters(device, region, dev, ports, meas_mk, dev_mk)
-        define_and_sort_terminals(device, ports, sub_mk)
+        
+        if @num == 2 && @name =='inductor2'
+         inductor2_shapes(tm2_mk, region)
+         set_device_parameters(device, region, dev, ports, meas_mk, dev_mk)
+         define_and_sort_terminals(device, ports, sub_mk) 
+         
+        elsif @num ==3 && @name =='inductor3'
+         inductor3_shapes(tm2_mk,tm1_mk,region)
+         set_device_parameters(device, region, dev, ports, meas_mk, dev_mk)
+         define_and_sort_terminals(device, ports, sub_mk) 
+                
+        elsif @num == 2 && @name =='cinductor'
+         cinductor_shapes(tm2_mk, tm1_mk, m1_mk, m2_mk, m3_mk, m4_mk, m5_mk, topvia2, topvia1, via1, via2, via3, via4, region)
+        end
+        
+        if $use_fasthenry.downcase == 'true'
+          run_fasthenry_cmd  
+        end  
       end
     end
   end
@@ -113,10 +165,27 @@ class GeneralNTerminalExtractor < RBA::GenericDeviceExtractor
     define_layer('ports', 'Connect Terminal')
     define_layer('meas_mk', 'Measuring parameters marker')
     define_layer('dev_mk', 'Device Marker')
-    # Define sub layer for some devices
-    if name.downcase.start_with?('ind') || name.downcase.include?('varicap')
+    # Define different layers for some devices
+    if name.downcase.start_with?('ind') || name.downcase.include?('varicap') || name.downcase.include?('cind')
       define_layer('sub_mk', 'Substrate Marker')
     end
+    if name.downcase.start_with?('ind') || name.downcase.include?('cind')
+      define_layer('tm2_mk','Topmetal2 layer')
+      define_layer('tm1_mk','Topmetal1 Layer')
+    end 
+    if name.downcase.start_with?('cind')
+      define_layer('m1_mk','metal1 Layer')
+      define_layer('m2_mk','metal2 Layer')
+      define_layer('m3_mk','metal3 Layer')
+      define_layer('m4_mk','metal4 Layer')
+      define_layer('m5_mk','metal5 Layer')    
+      define_layer('topvia2','topvia2 Layer')
+      define_layer('topvia1','topvia1 Layer')
+      define_layer('via1','via1 Layer')
+      define_layer('via2','via2 Layer')
+      define_layer('via3','via3 Layer')
+      define_layer('via4','via4 Layer')
+    end 
   end
 
   def set_device_parameters(device, region, dev, ports, meas_mk, dev_mk)
@@ -401,5 +470,1779 @@ class GeneralNTerminalExtractor < RBA::GenericDeviceExtractor
     end
     lengths.minmax
   end
-end
 
+  def inductor3_shapes(tm2_mk,tm1_mk,region)
+    puts("Inductor3 shapes found in the layout ")
+  
+    # Step 1: Isolate the geometry from tm2_mk excluding dev_mk
+    shopa = tm2_mk.size
+    popa = tm1_mk.size
+    
+    # Step 2: Restrict tm2_mk_mk to the specified region
+    restricted_region = tm2_mk.merged 
+    restricted_region_popa = tm1_mk
+    
+    # Step 3: Print details of the restricted shapes
+    restricted_shape_count = restricted_region.size
+    #puts("Number of restricted shapes: #{restricted_shape_count}")
+    index = 0
+    pindex = 3
+
+    # Define the output file path
+    
+    output_file_path = File.join(Dir.pwd, "inductor3.inp")
+        
+    # Method to calculate mid-line coordinates
+    def calculate_mid_line_coords(array)
+      n = array.size
+      mid_line_coords = []
+      (0...(n / 2)).each do |i|
+        p1 = array[i]
+        p2 = array[n - 1 - i]
+        mid_point = [(p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0]
+        mid_line_coords << mid_point
+      end
+      mid_line_coords
+    end
+    
+
+    # Step 4: Process each individual shape and print coordinates for layer tm2_mk
+    restricted_region.each do |polygon|
+      if polygon.is_a?(RBA::Polygon)
+        coordinates = []
+        index += 1
+  
+        # Extract coordinates of the individual shape
+        polygon.each_point_hull do |pt|
+          coordinates << [pt.x, pt.y]
+        end
+  
+        # For shape 1, reorder points (make Point 2 as Point 1, and Point 1 as the last point)
+        if index == 1
+          point_1 = coordinates[0]
+          point_2 = coordinates[1]
+          coordinates = coordinates[2..-1] # Remove Point 1 and Point 2
+          coordinates = [point_2] + coordinates + [point_1] # Add Point 2 at the start and Point 1 at the end
+  
+          # Calculate mid-line coordinates for shape 1
+          shape1 = calculate_mid_line_coords(coordinates)
+          #puts("Shape 1: #{shape1.inspect}")  
+          
+         # Open the output file for writing the edges and nodes (in 'w' mode to create or overwrite the file)
+         File.open(output_file_path, 'w') do |file|
+            
+            # Initialize node and edge counters
+            node_index = 1
+            edge_index = 1
+            
+            # Title
+            file.puts("*Title")
+            # Units in micrometers (um)
+            file.puts(".Units um")
+            # Default conductivity (sigma)
+            file.puts("*.default sigma = 30303.30")
+            file.puts("*Shape1")
+            shape1.each_with_index do |node, idx|
+              node_details = {
+                index: node_index,      # Node index (starting from 1)
+                x: node[0] / 1000.0,    # X-coordinate divided by 1000
+                y: node[1] / 1000.0,    # Y-coordinate divided by 1000
+                z: 0                    # Assuming Z is 0 unless specified otherwise
+              }
+              file.puts("n#{node_details[:index]} x=#{node_details[:x]} y=#{node_details[:y]} z=#{node_details[:z]}")
+              node_index += 1  # Increment node index
+            end
+          
+            
+            # Write edges for shape 1
+            gd = 1
+            shape1.each_with_index do |node, idx|
+              next if idx == shape1.size - 1  # Skip the last node since it has no "next" node
+              # Output the edge in FastHenry format
+              file.puts("E#{edge_index} n#{gd} n#{gd + 1} w=6.96 h=3")
+              edge_index += 1  # Increment edge index
+              gd += 1
+            end  
+            
+         end
+        end
+         
+        # For shape 2 & 3, process points
+        if index == 2
+          #puts(coordinates.inspect) 
+          first_last_two_points = coordinates[0, 2] + coordinates[-2, 2]  # First two + last two points
+          middle_points = coordinates[2..-3]  # Points excluding the first two and last two
+          subset_1 = middle_points[0, 10] # First 10 points
+          subset_2 = middle_points[10..-1] || [] # Remaining points (handle nil if fewer than 11 points)
+  
+          # Calculate mid-line coordinates for the arrays
+          shape2 = calculate_mid_line_coords(first_last_two_points)
+          mid_line_coords_subset1 = calculate_mid_line_coords(subset_1)
+          mid_line_coords_subset2 = calculate_mid_line_coords(subset_2)
+          
+          mid_line_coords_subset1.reverse!
+          shape3 = mid_line_coords_subset1 + mid_line_coords_subset2
+        
+          #puts("Shape 2: #{shape2.inspect}")
+          #puts("Shape 3: #{shape3.inspect}") 
+          
+         # Open the output file for writing (in 'w' mode to create or overwrite the file)
+         File.open(output_file_path, 'a') do |file|
+          
+            # Initialize node and edge counters
+            node_index = 7
+            edge_index = 6  
+            
+            # Write all nodes for shape 2
+            file.puts("*Shape2")
+            shape2.each_with_index do |node, idx|
+              node_details = {
+                index: node_index,      # Node index (continuing from shape1)
+                x: node[0] / 1000.0,    # X-coordinate divided by 1000
+                y: node[1] / 1000.0,    # Y-coordinate divided by 1000
+                z: 0                    # Assuming Z is 0 unless specified otherwise
+              }
+              file.puts("n#{node_details[:index]} x=#{node_details[:x]} y=#{node_details[:y]} z=#{node_details[:z]}")
+              node_index += 1  # Increment node index
+            end
+            
+            # Write edges for shape 2
+            nd = 7
+            shape2.each_with_index do |node, idx|
+              next if idx == shape2.size - 1  # Skip the last node since it has no "next" node
+              # Output the edge in FastHenry format
+              file.puts("E#{edge_index} n#{nd} n#{nd + 1} w=6.96 h=3")
+              edge_index += 1  # Increment edge index
+              nd += 1
+            end
+            
+            # Write all nodes for shape 3
+            file.puts("*Shape3")
+            shape3.each_with_index do |node, idx|
+              node_details = {
+                index: node_index,      # Node index (continuing from shape2)
+                x: node[0] / 1000.0,    # X-coordinate divided by 1000
+                y: node[1] / 1000.0,    # Y-coordinate divided by 1000
+                z: 0                    # Assuming Z is 0 unless specified otherwise
+              }
+              file.puts("n#{node_details[:index]} x=#{node_details[:x]} y=#{node_details[:y]} z=#{node_details[:z]}")
+              node_index += 1  # Increment node index
+            end
+            
+            # Write edges for shape 3
+            pd = 9
+            shape3.each_with_index do |node, idx|
+              next if idx == shape3.size - 1  # Skip the last node since it has no "next" node
+              # Output the edge in FastHenry format
+              file.puts("E#{edge_index} n#{pd} n#{pd + 1} w=6.96 h=3")
+              edge_index += 1  # Increment edge index
+              pd += 1
+            end    
+         end
+        end
+        
+      else
+        puts("Unsupported shape type")  
+      end      
+    end
+    
+    # Step 5: Process each individual shape and print coordinates for layer tm1_mk
+    restricted_region_popa.each do |polygon|
+      if polygon.is_a?(RBA::Polygon)
+        coordinates = []
+        pindex += 1
+    
+        # Extract coordinates of the individual shape
+        polygon.each_point_hull do |pt|
+          coordinates << [pt.x, pt.y]
+        end
+    
+        # Calculate mid-line coordinates for the current shape
+        mid_line_coords = []
+        n = coordinates.size
+        (0...(n / 2)).each do |i|
+          p1 = coordinates[i]
+          p2 = coordinates[n - 1 - i]
+          mid_point = [(p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0]
+          mid_line_coords << mid_point
+        end
+    
+        # Print the array of mid-line coordinates
+        #puts("Shape #{pindex}: #{mid_line_coords.inspect}")
+        
+        if pindex ==4
+          # Open the output file for appending (to add content for each shape without overwriting)
+          File.open(output_file_path, 'a') do |file|
+            
+            # Initialize node and edge counters for shape 4
+            node_index = 25
+            edge_index = 22
+      
+            # Write nodes for the current shape
+            file.puts("*Shape#{pindex}")
+            mid_line_coords.each_with_index do |node, idx|
+              node_details = {
+                index: node_index,      # Node index (continuing from previous shape's last node)
+                x: node[0] / 1000.0,    # X-coordinate divided by 1000
+                y: node[1] / 1000.0,    # Y-coordinate divided by 1000
+                z: 5.3                    # Assuming Z is 0 unless specified otherwise
+              }
+              file.puts("n#{node_details[:index]} x=#{node_details[:x]} y=#{node_details[:y]} z=#{node_details[:z]}")
+              node_index += 1  # Increment node index
+            end
+            
+            # Write edges for the current shape
+            nd = 25
+            mid_line_coords.each_with_index do |node, idx|
+              next if idx == mid_line_coords.size - 1  # Skip the last node since it has no "next" node
+              # Output the edge in FastHenry format
+              file.puts("E#{edge_index} n#{nd} n#{nd + 1} w=6.96 h=2")
+              edge_index += 1  # Increment edge index
+              nd += 1
+            end
+          end
+        end  
+        
+        if pindex ==5
+          # Open the output file for appending (to add content for each shape without overwriting)
+          File.open(output_file_path, 'a') do |file|
+            
+            # Initialize node and edge counters for shape 5
+            node_index = 27
+            edge_index = 23
+      
+            # Write nodes for the current shape
+            file.puts("*Shape#{pindex}")
+            mid_line_coords.each_with_index do |node, idx|
+              node_details = {
+                index: node_index,      # Node index (continuing from previous shape's last node)
+                x: node[0] / 1000.0,    # X-coordinate divided by 1000
+                y: node[1] / 1000.0,    # Y-coordinate divided by 1000
+                z: 5.3                    # Assuming Z is 0 unless specified otherwise
+              }
+              file.puts("n#{node_details[:index]} x=#{node_details[:x]} y=#{node_details[:y]} z=#{node_details[:z]}")
+              node_index += 1  # Increment node index
+            end
+      
+            # Write edges for the current shape
+            nd = 27
+            mid_line_coords.each_with_index do |node, idx|
+              next if idx == mid_line_coords.size - 1  # Skip the last node since it has no "next" node
+              # Output the edge in FastHenry format
+              file.puts("E#{edge_index} n#{nd} n#{nd+ 1} w=6.96 h=2")
+              edge_index += 1  # Increment edge index
+              nd += 1
+            end
+          end
+        end  
+        
+        if pindex ==6
+          # Open the output file for appending (to add content for each shape without overwriting)
+          File.open(output_file_path, 'a') do |file|
+            
+            # Initialize node and edge counters for shape 6
+            node_index = 29
+            edge_index = 24
+      
+            # Write nodes for the current shape
+            file.puts("*Shape#{pindex}")
+            mid_line_coords.each_with_index do |node, idx|
+              node_details = {
+                index: node_index,      # Node index (continuing from previous shape's last node)
+                x: node[0] / 1000.0,    # X-coordinate divided by 1000
+                y: node[1] / 1000.0,    # Y-coordinate divided by 1000
+                z: 5.3                    # Assuming Z is 0 unless specified otherwise
+              }
+              file.puts("n#{node_details[:index]} x=#{node_details[:x]} y=#{node_details[:y]} z=#{node_details[:z]}")
+              node_index += 1  # Increment node index
+            end
+      
+            # Write edges for the current shape
+            nd = 29
+            mid_line_coords.each_with_index do |node, idx|
+
+              next if idx == mid_line_coords.size - 1  # Skip the last node since it has no "next" node
+              # Output the edge in FastHenry format
+              file.puts("E#{edge_index} n#{nd} n#{nd + 1} w=6.96 h=2")
+              edge_index += 1  # Increment edge index
+              nd += 1
+            end
+          end
+        end  
+        
+        
+      else
+        puts("Unsupported shape type")
+      end
+    end
+    
+    # Open the output file for appending (to add the new content without overwriting the previous content)
+    File.open(output_file_path, 'a') do |file|
+    
+      # VIAS I
+      file.puts("* VIAS I")
+      file.puts("E27 n24 n26 w=3 h=2.8")
+      
+      # VIAS II
+      file.puts("* VIAS II")
+      file.puts("E28 n1 n28 w=3 h=2.8")
+      
+      # VIAS III
+      file.puts("* VIAS III")
+      file.puts("E29 n6 n29 w=3 h=2.8")
+      
+      # VIAS IV
+      file.puts("* VIAS IV")
+      file.puts("E30 n9 n32 w=3 h=2.8")
+    
+      # External connection
+      file.puts(".external n26 n28")
+      
+      # Frequency range
+      file.puts(".freq fmin=1e2 fmax=1e18 ndec=1")
+      
+      # End of the file
+      file.puts(".end")
+    end
+    
+    puts("FastHenry file for Inductor3 is written to #{output_file_path}")
+    
+    fasthenry_exe_path = "C:/Users/singh/FastHenry2-Sam/bin/fasthenry.exe"
+   
+    input_dir = File.dirname(output_file_path)
+    
+    Dir.chdir(input_dir) do
+      # Run FastHenry synchronously (waits for it to finish)
+      cmd = "\"#{fasthenry_exe_path}\" \"#{output_file_path}\""
+      system(cmd)
+    end
+    
+    # Now check and parse output (e.g., inductor3.out)
+    result_file = File.join(input_dir, 'Zc.mat')  # Adjust if needed
+    
+    if File.exist?(result_file)
+      puts "\n Inductance is  ==="
+      File.foreach(result_file) do |line|
+        if match = line.match(/\+\s*([0-9.eE+-]+)j/)
+          imag_value = match[1].to_f  # convert string to float
+          result = imag_value / 628.0
+          puts result
+          break
+        end
+      end 
+    else
+      puts "Output file not found: #{result_file}"
+    end   
+  end
+  
+
+  
+  def inductor2_shapes(tm2_mk, region)
+    puts("Inductor2 shapes are found in the layout")
+
+    # Step 1: Isolate the geometry from tm2_mk within the specified region
+    restricted_region = tm2_mk.merge
+    shape_count = restricted_region.size
+
+    # Define the output file name and path
+    output_file_path = File.join(Dir.pwd, 'inductor2.inp')
+    
+    # Prepare to write FastHenry file
+    File.open(output_file_path, 'w') do |file|
+      # Write the header for FastHenry
+      file.puts("*Title")
+      file.puts(".Units um")
+      file.puts(".default sigma = 30.3")
+      file.puts("* Nodes")
+
+      node_index = 1
+      edge_index = 1
+      nodes = []
+      edges = []
+
+      # Step 2: Process each shape in the region
+      index = 0
+      restricted_region.each do |shape|
+        coordinates = []
+
+        # Extract points for polygons or boxes
+        if shape.respond_to?(:each_point_hull)
+          shape.each_point_hull do |pt|
+            coordinates << [pt.x, pt.y]
+          end
+        else
+          puts("Unsupported shape type for Shape #{index + 1}; skipping.")
+          next
+        end
+
+        # Log shape details
+        index += 1
+        #puts("Shape #{index}: #{coordinates}")
+
+        # Initialize mid-line coordinates
+        mid_line_coords = []
+
+        # Get the number of coordinates
+        n = coordinates.size
+
+        if n.even?
+          # For even nodes: Pair opposite points
+          (0...(n / 2)).each do |i|
+            p1 = coordinates[i]
+            p2 = coordinates[n - 1 - i]
+            mid_point = [(p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0]
+            mid_line_coords << mid_point
+          end
+        else
+          # For odd nodes: Pair nodes from the start and end, and handle the middle one separately
+          (0...(n / 2)).each do |i|
+            p1 = coordinates[i]
+            p2 = coordinates[n - 1 - i]
+            mid_point = [(p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0]
+            mid_line_coords << mid_point
+          end
+        
+          # Handle the middle node: midpoint between the middle node and the next one
+          middle = coordinates[n / 2]
+          previous_node = coordinates[(n / 2) - 1]
+          mid_point = [(middle[0] + previous_node[0]) / 2.0, (middle[1] + previous_node[1]) / 2.0]
+          mid_line_coords << mid_point
+        end
+
+        # Log mid-line coordinates
+        #puts("Mid-line for Shape #{index}: #{mid_line_coords}")
+
+        # Add mid-line nodes to the FastHenry file
+        mid_line_nodes = []
+        mid_line_coords.each do |coord|
+          nodes << { index: node_index, x: coord[0], y: coord[1], z: 0 }
+          mid_line_nodes << node_index
+          node_index += 1
+        end
+
+        # Create edges along the mid-line
+        mid_line_nodes.each_with_index do |start_node, i|
+          end_node = mid_line_nodes[(i + 1) % mid_line_nodes.size] # Wrap to the first node
+          edges << { index: edge_index, start: start_node, end: end_node, width: 6.1, height: 3 }
+          edge_index += 1
+        end
+      end
+
+      # Step 3: Write nodes to the file
+      nodes.each do |node|
+        file.puts("n#{node[:index]} x=#{node[:x]/1000} y=#{node[:y]/1000} z=#{node[:z]/1000}")
+      end
+
+      file.puts("* Edges")
+      # Write edges to the file
+      edges.each_with_index do |edge,i|
+        if i != edges.size - 1
+          file.puts("E#{edge[:index]} n#{edge[:start]} n#{edge[:end]} w=#{edge[:width]} h=#{edge[:height]}")
+        end
+      end
+
+      # Optional: External connections
+      file.puts("\n.external n1 n#{node_index - 2}")
+      file.puts("\n.freq fmin=1e2 fmax=1e18 ndec=1")
+      file.puts("\n.end")
+    end
+
+    puts("FastHenry file for Inductor2 is written to #{output_file_path}")
+    
+    fasthenry_exe_path = "C:/Users/singh/FastHenry2-Sam/bin/fasthenry.exe"
+   
+    input_dir = File.dirname(output_file_path)
+    
+    Dir.chdir(input_dir) do
+      # Run FastHenry synchronously (waits for it to finish)
+      cmd = "\"#{fasthenry_exe_path}\" \"#{output_file_path}\""
+      system(cmd)
+    end
+    
+    # Now check and parse output (e.g., inductor3.out)
+    result_file = File.join(input_dir, 'Zc.mat')  # Adjust if needed
+    
+    if File.exist?(result_file)
+      puts "\n Inductance is  ==="
+      File.foreach(result_file) do |line|
+        if match = line.match(/\+\s*([0-9.eE+-]+)j/)
+          imag_value = match[1].to_f  # convert string to float
+          result = imag_value / 628.0
+          puts result
+          break
+        end
+      end 
+    else
+      puts "Output file not found: #{result_file}"
+    end
+    
+  end
+  
+  
+  def run_fasthenry_cmd
+      
+   cmd = "start cmd /k \"\"#{$fasthenry_exe_path}\" \"#{$fasthenry_file_path}\"\""
+   system(cmd)
+  
+  end    
+   
+   
+  def cinductor_shapes(tm2_mk, tm1_mk, m1_mk, m2_mk, m3_mk, m4_mk, m5_mk, topvia2, topvia1, via1, via2, via3, via4, region)
+    puts("Custom Inductor shapes are found in the layout ")  
+    
+    tm2 = tm2_mk.size   
+    tm1 = tm1_mk.size  
+    m1 = m1_mk.size 
+    m2 = m2_mk.size
+    m3 = m3_mk.size 
+    m4 = m4_mk.size  
+    m5 = m5_mk.size
+    topvia2_shapes = topvia2.size   
+    topvia1_shapes = topvia1.size  
+    via1_shapes = via1.size  
+    via2_shapes = via2.size  
+    via3_shapes = via3.size  
+    via4_shapes = via4.size
+        
+    if tm2 == 0 && tm1 != 0 && m1 == 0 && m2 == 0 && m3 == 0 && m4 == 0 && m5 == 0
+      inductor2_shapes(tm1_mk, region) 
+    elsif tm2 == 0 && tm1 == 0 && m1 != 0 && m2 == 0 && m3 == 0 && m4 == 0 && m5 == 0
+      inductor2_shapes(m1_mk, region)
+    elsif tm2 == 0 && tm1 == 0 && m1 == 0 && m2 != 0 && m3 == 0 && m4 == 0 && m5 == 0
+      inductor2_shapes(m2_mk, region)
+    elsif tm2 == 0 && tm1 == 0 && m1 == 0 && m2 == 0 && m3 != 0 && m4 == 0 && m5 == 0
+      inductor2_shapes(m3_mk, region)
+    elsif tm2 == 0 && tm1 == 0 && m1 == 0 && m2 == 0 && m3 == 0 && m4 != 0 && m5 == 0
+      inductor2_shapes(m4_mk, region)
+    elsif tm2 == 0 && tm1 == 0 && m1 == 0 && m2 == 0 && m3 == 0 && m4 == 0 && m5 != 0
+      inductor2_shapes(m5_mk, region)
+    end
+    
+    def find_nearest_node(centroid, nodes)
+      centroid_x, centroid_y = centroid
+      nodes.min_by do |node|
+        (centroid_x - node[:x])**2 + (centroid_y - node[:y])**2
+      end
+    end
+
+  
+    def compute_centroid_sets(layer, set_size = 9)
+      shapes = []
+    
+      # Collect coordinates of each shape
+      layer.each do |shape|
+        coords = []
+        shape.each_point_hull { |pt| coords << [pt.x, pt.y] }
+        shapes << coords
+      end
+    
+      # Compute centroids
+      centroids = shapes.map.with_index(1) do |coords, idx|
+        x_sum = coords.map { |p| p[0] }.sum
+        y_sum = coords.map { |p| p[1] }.sum
+        n = coords.size
+    
+        centroid = [x_sum / n.to_f, y_sum / n.to_f]
+        #puts "Shape #{idx} centroid: #{centroid.inspect}"
+        centroid
+      end
+    
+      # Sort centroids by distance from (0,0)
+      sorted_centroids = centroids.each_with_index.sort_by do |centroid_with_index|
+        centroid, index = centroid_with_index
+        x, y = centroid
+        x**2 + y**2
+      end
+    
+      # Group into sets of `set_size`
+      centroid_sets = sorted_centroids.each_slice(set_size).to_a
+    
+      # Optional: print the sets
+      centroid_sets.each_with_index do |set, set_idx|
+        #puts "\nSet #{set_idx + 1}:"
+        set.each do |centroid, original_index|
+          #puts "  Original Shape #{original_index + 1}, Centroid #{centroid.inspect}"
+        end
+      end
+    
+      # Return the sets for further use
+      centroid_sets
+    end
+    
+    def get_width_val(sel_polygon, width_val)
+      # Intra-polygon spacing check
+      proj = RBA::Metrics::Projection
+      width_pairs = sel_polygon.width_check(width_val, metrics: proj, min_projection: 10)
+    
+      width_values = []
+      width_pairs.each { |edge| width_values << edge.distance }
+    
+      # Reject zero and return minimum non-zero value
+      width_values = width_values.reject(&:zero?)
+      width_values.min
+    end
+    
+    
+    def get_min_max_length(edges)
+      lengths = []
+      edges.each { |e| lengths << e.length }
+      [lengths.min, lengths.max]
+    end
+    
+    
+    def reorder_coords(points, width)
+      n = points.size
+    
+      # Check if original points already satisfy the condition by y or x difference
+      y_diff_orig = (points.first[1] - points.last[1]).abs
+      x_diff_orig = (points.first[0] - points.last[0]).abs
+    
+      if y_diff_orig == width
+        #puts "No reordering needed — original points already have Y difference of #{width}."
+        return points
+      elsif x_diff_orig == width
+        #puts "No reordering needed — original points already have X difference of #{width}."
+        return points
+      end
+    
+      # Try to reorder by y-coordinate difference first
+      n.times do |i|
+        rotated = points.rotate(i)
+        y_diff = (rotated.first[1] - rotated.last[1]).abs
+        if y_diff == width
+          #puts "Reordered points found by Y difference:"
+          #rotated.each { |pt| p pt }
+          return rotated
+        end
+      end
+    
+      # If no y difference found, try by x-coordinate difference
+      n.times do |i|
+        rotated = points.rotate(i)
+        x_diff = (rotated.first[0] - rotated.last[0]).abs
+        if x_diff == width
+          #puts "Reordered points found by X difference:"
+          #rotated.each { |pt| p pt }
+          return rotated
+        end
+      end
+    
+      #puts "No reordering found with Y or X difference of #{width}. Returning original points."
+      points
+    end
+
+            
+    
+    # Method to calculate mid-line coordinates
+    def calculate_mid_line_coords(array)
+      n = array.size
+      mid_line_coords = []
+      (0...(n / 2)).each do |i|
+        p1 = array[i]
+        p2 = array[n - 1 - i]
+        mid_point = [(p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0]
+        mid_line_coords << mid_point
+      end
+      mid_line_coords
+    end
+    
+    
+    node_index = 1
+    edge_index = 1
+    nodes = []
+    edges = []
+    index = 0    
+    endpoints = []  # New line to collect start/end points
+    #output_file_path = File.join(Dir.pwd, 'cinductor_tm2_midpoints.inp')
+    output_file_path = File.join(Dir.pwd, "cinductor #{$inductor_counter}.inp")
+    $inductor_counter += 1
+    
+    tm2_endpoints = []
+    if tm2 != 0  
+      restricted_region = tm2_mk.merge
+      shape_count = restricted_region.size
+      #puts("Number of TM2 shapes: #{shape_count}")
+    
+      # Estimate threshold width
+      layout_edges = []
+      tm2_mk.edges.each { |e| layout_edges << e }
+      max_len = layout_edges.map(&:length).max
+      width_threshold = get_width_val(tm2_mk.merged & region, max_len)
+      #puts("Estimated width threshold: #{width_threshold}")
+    
+      File.open(output_file_path, 'w') do |file|
+        file.puts("*Title")
+        file.puts(".Units um")
+        file.puts(".default sigma = 30.3")
+        file.puts("* Nodes")
+        
+        restricted_region.each do |shape|
+          coordinates = []
+    
+          if shape.respond_to?(:each_point_hull)
+            shape.each_point_hull do |pt|
+              coordinates << [pt.x, pt.y]
+            end
+          else
+            puts("Unsupported shape type for Shape #{index + 1}; skipping.")
+            next
+          end
+    
+          index += 1
+          #puts("Shape #{index}: #{coordinates}")
+    
+          # Reorder coordinates using estimated width
+          reordered_coords = reorder_coords(coordinates, width_threshold)
+          #puts("Reordered coords: #{reordered_coords}")
+    
+          # Compute mid-line coordinates
+          mid_line_coords = calculate_mid_line_coords(reordered_coords)
+          #puts("Mid-line for Shape #{index}: #{mid_line_coords}")
+          
+           # Store endpoints
+          if mid_line_coords.any?
+            first_point = mid_line_coords.first
+            last_point = mid_line_coords.last
+            endpoints << [first_point, last_point] 
+          end
+          
+          # Write nodes
+          mid_line_nodes = []
+          mid_line_coords.each do |coord|
+            nodes << { index: node_index, x: coord[0], y: coord[1], z: 0 }
+            mid_line_nodes << node_index
+            node_index += 1
+          end
+          
+          if mid_line_nodes.any?
+            tm2_endpoints << { start_node: mid_line_nodes.first, end_node: mid_line_nodes.last }
+          end
+    
+          # Write edges
+          mid_line_nodes.each_with_index do |start_node, i|
+            next if i == mid_line_nodes.size - 1
+            end_node = mid_line_nodes[i + 1]
+            edges << { index: edge_index, start: start_node, end: end_node, width: width_threshold/1000.00, height: 3 }
+            edge_index += 1
+          end
+        end
+    
+        # Output all nodes
+        nodes.each do |node|
+          file.puts("n#{node[:index]} x=#{node[:x] / 1000.0} y=#{node[:y] / 1000.0} z=#{node[:z] / 1000.0}")
+        end
+    
+        # Output edges
+        file.puts("* Edges")
+        edges.each do |edge|
+          file.puts("E#{edge[:index]} n#{edge[:start]} n#{edge[:end]} w=#{edge[:width]} h=#{edge[:height]}")
+        end  
+      end
+        
+        
+      tm1_endpoints =[]
+      if tm1 != 0
+        restricted_region_tm1 = tm1_mk.merge
+        shape_count_tm1 = restricted_region_tm1.size
+        #puts("Number of TM1 shapes: #{shape_count_tm1}")
+      
+        # Estimate width threshold for TM1
+        edges_tm1 = []
+        tm1_mk.edges.each { |e| edges_tm1 << e }
+        max_len_tm1 = edges_tm1.map(&:length).max
+        width_threshold_tm1 = get_width_val(tm1_mk.merged & region, max_len_tm1)
+        #puts("Estimated width threshold for TM1: #{width_threshold_tm1}")
+      
+        index_tm1 = 0
+      
+        restricted_region_tm1.each do |shape|
+          coordinates = []
+      
+          if shape.respond_to?(:each_point_hull)
+            shape.each_point_hull do |pt|
+              coordinates << [pt.x, pt.y]
+            end
+          else
+            puts("Unsupported shape type for TM1 shape #{index_tm1 + 1}; skipping.")
+            next
+          end
+      
+          index_tm1 += 1
+          #puts("TM1 Shape #{index_tm1}: #{coordinates}")
+      
+          reordered_coords = reorder_coords(coordinates, width_threshold_tm1)
+          #puts("Reordered coords (TM1): #{reordered_coords}")
+      
+          mid_line_coords = calculate_mid_line_coords(reordered_coords)
+          #puts("Mid-line for TM1 Shape #{index_tm1}: #{mid_line_coords}")
+      
+          # Save endpoints
+          if mid_line_coords.any?
+            endpoints << [mid_line_coords.first, mid_line_coords.last]
+          end
+      
+          # Write nodes
+          mid_line_nodes = []
+          mid_line_coords.each do |coord|
+            nodes << { index: node_index, x: coord[0], y: coord[1], z: 5300}
+            mid_line_nodes << node_index
+            node_index += 1
+          end
+          
+          if mid_line_nodes.any?
+            tm1_endpoints << { start_node: mid_line_nodes.first, end_node: mid_line_nodes.last }
+          end
+          
+          
+          # Write edges
+          mid_line_nodes.each_with_index do |start_node, i|
+            next if i == mid_line_nodes.size - 1
+            end_node = mid_line_nodes[i + 1]
+            edges << { index: edge_index, start: start_node, end: end_node, width: width_threshold_tm1/1000.00, height: 2 }
+            edge_index += 1
+          end
+          
+          File.open(output_file_path, 'a') do |file|
+            # Write TM1 nodes
+            file.puts("* Nodes")
+            nodes.last(mid_line_nodes.length).each do |node|
+              file.puts("n#{node[:index]} x=#{node[:x] / 1000.0} y=#{node[:y] / 1000.0} z=#{node[:z] / 1000.0}")
+            end
+          
+            # Write TM1 edges
+            file.puts("* Edges")
+            edges.last(mid_line_nodes.length - 1).each do |edge|
+              file.puts("E#{edge[:index]} n#{edge[:start]} n#{edge[:end]} w=#{edge[:width]} h=#{edge[:height]}")
+            end 
+          end
+        end   
+              
+      else
+        File.open(output_file_path, 'a') do |file| 
+          # External connections
+          file.puts("\n.external n1 n#{node_index - 2}")
+          file.puts("\n.freq fmin=1e2 fmax=1e18 ndec=1")
+          file.puts("\n.end")  
+        end
+        puts("FastHenry file for Custom inductor is written to #{output_file_path}")  
+      end  
+            
+      
+      m1_endpoints =[]
+      if m1 != 0 && tm1 !=0 
+        restricted_region_m1 = m1_mk.merge
+        shape_count_m1 = restricted_region_m1.size
+        #puts("Number of M1 shapes: #{shape_count_m1}")
+      
+        # Estimate width threshold for M1
+        edges_m1 = []
+        m1_mk.edges.each { |e| edges_m1 << e }
+        max_len_m1 = edges_m1.map(&:length).max
+        width_threshold_m1 = get_width_val(m1_mk.merged & region, max_len_m1)
+        #puts("Estimated width threshold for M1: #{width_threshold_m1}")
+      
+        index_m1 = 0
+      
+        restricted_region_m1.each do |shape|
+          coordinates = []
+      
+          if shape.respond_to?(:each_point_hull)
+            shape.each_point_hull do |pt|
+              coordinates << [pt.x, pt.y]
+            end
+          else
+            puts("Unsupported shape type for M1 shape #{index_m1 + 1}; skipping.")
+            next
+          end
+      
+          index_m1 += 1
+          #puts("M1 Shape #{index_m1}: #{coordinates}")
+      
+          reordered_coords = reorder_coords(coordinates, width_threshold_m1)
+          #puts("Reordered coords (M1): #{reordered_coords}")
+      
+          mid_line_coords = calculate_mid_line_coords(reordered_coords)
+          #puts("Mid-line for M1 Shape #{index_m1}: #{mid_line_coords}")
+      
+          # Save endpoints
+          if mid_line_coords.any?
+            endpoints << [mid_line_coords.first, mid_line_coords.last]
+          end
+      
+          # Write nodes
+          mid_line_nodes = []
+          mid_line_coords.each do |coord|
+            nodes << { index: node_index, x: coord[0], y: coord[1], z: 7395 }
+            mid_line_nodes << node_index
+            node_index += 1
+          end
+          
+          if mid_line_nodes.any?
+            m1_endpoints << { start_node: mid_line_nodes.first, end_node: mid_line_nodes.last }
+          end
+      
+          # Write edges
+          mid_line_nodes.each_with_index do |start_node, i|
+            next if i == mid_line_nodes.size - 1
+            end_node = mid_line_nodes[i + 1]
+            edges << { index: edge_index, start: start_node, end: end_node, width: width_threshold_m1/1000.00, height: 0.49 }
+            edge_index += 1
+          end
+      
+          File.open(output_file_path, 'a') do |file|
+            # Write M1 nodes
+            file.puts("* Nodes")
+            nodes.last(mid_line_nodes.length).each do |node|
+              file.puts("n#{node[:index]} x=#{node[:x] / 1000.0} y=#{node[:y] / 1000.0} z=#{node[:z] / 1000.0}")
+            end
+      
+            # Write M1 edges
+            file.puts("* Edges")
+            edges.last(mid_line_nodes.length - 1).each do |edge|
+              file.puts("E#{edge[:index]} n#{edge[:start]} n#{edge[:end]} w=#{edge[:width]} h=#{edge[:height]}")
+            end
+          end
+        end
+      end
+      
+      m2_endpoints =[]
+      if m2 != 0  && tm1 !=0  && m1 != 0
+        restricted_region_m2 = m2_mk.merge
+        shape_count_m2 = restricted_region_m2.size
+        #puts("Number of M2 shapes: #{shape_count_m2}")
+      
+        # Estimate width threshold for M2
+        edges_m2 = []
+        m2_mk.edges.each { |e| edges_m2 << e }
+        max_len_m2 = edges_m2.map(&:length).max
+        width_threshold_m2 = get_width_val(m2_mk.merged & region, max_len_m2)
+        #puts("Estimated width threshold for M2: #{width_threshold_m2}")
+      
+        index_m2 = 0
+      
+        restricted_region_m2.each do |shape|
+          coordinates = []
+      
+          if shape.respond_to?(:each_point_hull)
+            shape.each_point_hull do |pt|
+              coordinates << [pt.x, pt.y]
+            end
+          else
+            puts("Unsupported shape type for M2 shape #{index_m2 + 1}; skipping.")
+            next
+          end
+      
+          index_m2 += 1
+          #puts("M2 Shape #{index_m2}: #{coordinates}")
+      
+          reordered_coords = reorder_coords(coordinates, width_threshold_m2)
+          #puts("Reordered coords (M2): #{reordered_coords}")
+      
+          mid_line_coords = calculate_mid_line_coords(reordered_coords)
+          #puts("Mid-line for M2 Shape #{index_m2}: #{mid_line_coords}")
+      
+          # Save endpoints
+          if mid_line_coords.any?
+            endpoints << [mid_line_coords.first, mid_line_coords.last]
+          end
+      
+          # Write nodes
+          mid_line_nodes = []
+          mid_line_coords.each do |coord|
+            nodes << { index: node_index, x: coord[0], y: coord[1], z: 8425 }
+            mid_line_nodes << node_index
+            node_index += 1
+          end
+          
+          if mid_line_nodes.any?
+            m2_endpoints << { start_node: mid_line_nodes.first, end_node: mid_line_nodes.last }
+          end
+          
+          # Write edges
+          mid_line_nodes.each_with_index do |start_node, i|
+            next if i == mid_line_nodes.size - 1
+            end_node = mid_line_nodes[i + 1]
+            edges << { index: edge_index, start: start_node, end: end_node, width: width_threshold_m2/1000.00, height: 0.49 }
+            edge_index += 1
+          end
+      
+          File.open(output_file_path, 'a') do |file|
+            # Write M2 nodes
+            file.puts("* Nodes")
+            nodes.last(mid_line_nodes.length).each do |node|
+              file.puts("n#{node[:index]} x=#{node[:x] / 1000.0} y=#{node[:y] / 1000.0} z=#{node[:z] / 1000.0}")
+            end
+      
+            # Write M2 edges
+            file.puts("* Edges")
+            edges.last(mid_line_nodes.length - 1).each do |edge|
+              file.puts("E#{edge[:index]} n#{edge[:start]} n#{edge[:end]} w=#{edge[:width]} h=#{edge[:height]}")
+            end
+          end
+        end
+      
+      end
+
+      m3_endpoints =[]
+      if m3 != 0 && tm1 !=0  && m1 != 0 && m2 != 0 
+        restricted_region_m3 = m3_mk.merge
+        shape_count_m3 = restricted_region_m3.size
+        #puts("Number of M3 shapes: #{shape_count_m3}")
+      
+        # Estimate width threshold for M3
+        edges_m3 = []
+        m3_mk.edges.each { |e| edges_m3 << e }
+        max_len_m3 = edges_m3.map(&:length).max
+        width_threshold_m3 = get_width_val(m3_mk.merged & region, max_len_m3)
+        #puts("Estimated width threshold for M3: #{width_threshold_m3}")
+      
+        index_m3 = 0
+      
+        restricted_region_m3.each do |shape|
+          coordinates = []
+      
+          if shape.respond_to?(:each_point_hull)
+            shape.each_point_hull do |pt|
+              coordinates << [pt.x, pt.y]
+            end
+          else
+            puts("Unsupported shape type for M3 shape #{index_m3 + 1}; skipping.")
+            next
+          end
+      
+          index_m3 += 1
+          #puts("M3 Shape #{index_m3}: #{coordinates}")
+      
+          reordered_coords = reorder_coords(coordinates, width_threshold_m3)
+          #puts("Reordered coords (M3): #{reordered_coords}")
+      
+          mid_line_coords = calculate_mid_line_coords(reordered_coords)
+          #puts("Mid-line for M3 Shape #{index_m3}: #{mid_line_coords}")
+      
+          # Save endpoints
+          if mid_line_coords.any?
+            endpoints << [mid_line_coords.first, mid_line_coords.last]
+          end
+      
+          # Write nodes
+          mid_line_nodes = []
+          mid_line_coords.each do |coord|
+            nodes << { index: node_index, x: coord[0], y: coord[1], z: 9455 }
+            mid_line_nodes << node_index
+            node_index += 1
+          end
+          
+          if mid_line_nodes.any?
+            m3_endpoints << { start_node: mid_line_nodes.first, end_node: mid_line_nodes.last }
+          end
+          
+          # Write edges
+          mid_line_nodes.each_with_index do |start_node, i|
+            next if i == mid_line_nodes.size - 1
+            end_node = mid_line_nodes[i + 1]
+            edges << { index: edge_index, start: start_node, end: end_node, width: width_threshold_m3/1000.00, height: 0.49 }
+            edge_index += 1
+          end
+      
+          File.open(output_file_path, 'a') do |file|
+            # Write M3 nodes
+            file.puts("* Nodes")
+            nodes.last(mid_line_nodes.length).each do |node|
+              file.puts("n#{node[:index]} x=#{node[:x] / 1000.0} y=#{node[:y] / 1000.0} z=#{node[:z] / 1000.0}")
+            end
+      
+            # Write M3 edges
+            file.puts("* Edges")
+            edges.last(mid_line_nodes.length - 1).each do |edge|
+              file.puts("E#{edge[:index]} n#{edge[:start]} n#{edge[:end]} w=#{edge[:width]} h=#{edge[:height]}")
+            end
+          end
+        end
+      
+      end
+      
+      m4_endpoints =[]
+      if m4 != 0 && tm1 !=0  && m1 !=0 && m2 !=0 && m3 !=0
+        restricted_region_m4 = m4_mk.merge
+        shape_count_m4 = restricted_region_m4.size
+        #puts("Number of M4 shapes: #{shape_count_m4}")
+      
+        # Estimate width threshold for M4
+        edges_m4 = []
+        m4_mk.edges.each { |e| edges_m4 << e }
+        max_len_m4 = edges_m4.map(&:length).max
+        width_threshold_m4 = get_width_val(m4_mk.merged & region, max_len_m4)
+        #puts("Estimated width threshold for M4: #{width_threshold_m4}")
+      
+        index_m4 = 0
+      
+        restricted_region_m4.each do |shape|
+          coordinates = []
+      
+          if shape.respond_to?(:each_point_hull)
+            shape.each_point_hull do |pt|
+              coordinates << [pt.x, pt.y]
+            end
+          else
+            puts("Unsupported shape type for M4 shape #{index_m4 + 1}; skipping.")
+            next
+          end
+      
+          index_m4 += 1
+          #puts("M4 Shape #{index_m4}: #{coordinates}")
+      
+          reordered_coords = reorder_coords(coordinates, width_threshold_m4)
+          #puts("Reordered coords (M4): #{reordered_coords}")
+      
+          mid_line_coords = calculate_mid_line_coords(reordered_coords)
+          #puts("Mid-line for M4 Shape #{index_m4}: #{mid_line_coords}")
+      
+          # Save endpoints
+          if mid_line_coords.any?
+            endpoints << [mid_line_coords.first, mid_line_coords.last]
+          end
+          
+          if mid_line_nodes.any?
+            m4_endpoints << { start_node: mid_line_nodes.first, end_node: mid_line_nodes.last }
+          end
+          
+          # Write nodes
+          mid_line_nodes = []
+          mid_line_coords.each do |coord|
+            nodes << { index: node_index, x: coord[0], y: coord[1], z: 10485 }
+            mid_line_nodes << node_index
+            node_index += 1
+          end
+      
+          # Write edges
+          mid_line_nodes.each_with_index do |start_node, i|
+            next if i == mid_line_nodes.size - 1
+            end_node = mid_line_nodes[i + 1]
+            edges << { index: edge_index, start: start_node, end: end_node, width: width_threshold_m4/1000.00, height: 0.49 }
+            edge_index += 1
+          end
+      
+          File.open(output_file_path, 'a') do |file|
+            # Write M4 nodes
+            file.puts("* Nodes")
+            nodes.last(mid_line_nodes.length).each do |node|
+              file.puts("n#{node[:index]} x=#{node[:x] / 1000.0} y=#{node[:y] / 1000.0} z=#{node[:z] / 1000.0}")
+            end
+      
+            # Write M4 edges
+            file.puts("* Edges")
+            edges.last(mid_line_nodes.length - 1).each do |edge|
+              file.puts("E#{edge[:index]} n#{edge[:start]} n#{edge[:end]} w=#{edge[:width]} h=#{edge[:height]}")
+            end
+          end
+        end
+    
+      end
+      
+      m5_endpoints =[]
+      if m5 != 0  && tm1 !=0  && m1 !=0 && m2 !=0 && m3 !=0 && m4 !=0
+        restricted_region_m5 = m5_mk.merge
+        shape_count_m5 = restricted_region_m5.size
+        #puts("Number of M5 shapes: #{shape_count_m5}")
+      
+        # Estimate width threshold for M5
+        edges_m5 = []
+        m5_mk.edges.each { |e| edges_m5 << e }
+        max_len_m5 = edges_m5.map(&:length).max
+        width_threshold_m5 = get_width_val(m5_mk.merged & region, max_len_m5)
+        #puts("Estimated width threshold for M5: #{width_threshold_m5}")
+      
+        index_m5 = 0
+      
+        restricted_region_m5.each do |shape|
+          coordinates = []
+      
+          if shape.respond_to?(:each_point_hull)
+            shape.each_point_hull do |pt|
+              coordinates << [pt.x, pt.y]
+            end
+          else
+            puts("Unsupported shape type for M5 shape #{index_m5 + 1}; skipping.")
+            next
+          end
+      
+          index_m5 += 1
+          #puts("M5 Shape #{index_m5}: #{coordinates}")
+      
+          reordered_coords = reorder_coords(coordinates, width_threshold_m5)
+          #puts("Reordered coords (M5): #{reordered_coords}")
+      
+          mid_line_coords = calculate_mid_line_coords(reordered_coords)
+          #puts("Mid-line for M5 Shape #{index_m5}: #{mid_line_coords}")
+      
+          # Save endpoints
+          if mid_line_coords.any?
+            endpoints << [mid_line_coords.first, mid_line_coords.last]
+          end
+      
+          # Write nodes
+          mid_line_nodes = []
+          mid_line_coords.each do |coord|
+            nodes << { index: node_index, x: coord[0], y: coord[1], z: 11480 }
+            mid_line_nodes << node_index
+            node_index += 1
+          end
+          
+          if mid_line_nodes.any?
+            m5_endpoints << { start_node: mid_line_nodes.first, end_node: mid_line_nodes.last }
+          end
+          
+          # Write edges
+          mid_line_nodes.each_with_index do |start_node, i|
+            next if i == mid_line_nodes.size - 1
+            end_node = mid_line_nodes[i + 1]
+            edges << { index: edge_index, start: start_node, end: end_node, width: width_threshold_m5/1000.00, height: 0.49 }
+            edge_index += 1
+          end
+      
+          File.open(output_file_path, 'a') do |file|
+            # Write M5 nodes
+            file.puts("* Nodes")
+            nodes.last(mid_line_nodes.length).each do |node|
+              file.puts("n#{node[:index]} x=#{node[:x] / 1000.0} y=#{node[:y] / 1000.0} z=#{node[:z] / 1000.0}")
+            end
+      
+            # Write M5 edges
+            file.puts("* Edges")
+            edges.last(mid_line_nodes.length - 1).each do |edge|
+              file.puts("E#{edge[:index]} n#{edge[:start]} n#{edge[:end]} w=#{edge[:width]} h=#{edge[:height]}")
+            end
+          end
+        end
+      
+        
+      end
+      
+      
+      vias = []
+      nearest_tm2_nodes = []
+      nearest_tm1_nodes = []
+      vias_no = 1
+      if topvia2_shapes != 0
+        # === Generate centroid sets ===
+        centroid_sets = compute_centroid_sets(topvia2)
+      
+        # === Extract 5th centroid from each set ===
+        fifth_centroids = centroid_sets.map.with_index(1) do |set, set_idx|
+          if set[4]
+            #puts "\nSet #{set_idx}: 5th centroid = #{set[4][0].inspect}"
+            set[4][0]
+          else
+            #puts "\nSet #{set_idx}: No 5th centroid (set too small)"
+            nil
+          end
+        end.compact
+      
+        # === Precompute TM2 and TM1 nodes in valid ranges ===
+        tm2_nodes_in_range = []
+        tm2_endpoints.each do |ep|
+          tm2_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 0 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+      
+        tm1_nodes_in_range = []
+        tm1_endpoints.each do |ep|
+          tm1_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 5300 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+      
+        # === Find nearest TM2 and TM1 nodes ===
+        fifth_centroids.each_with_index do |centroid, idx|
+          nearest_tm2 = find_nearest_node(centroid, tm2_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest TM2 node #{nearest_tm2.inspect}"
+          nearest_tm2_nodes << nearest_tm2
+      
+          nearest_tm1 = find_nearest_node(centroid, tm1_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest TM1 node #{nearest_tm1.inspect}"
+          nearest_tm1_nodes << nearest_tm1
+        end
+      
+        # === Write VIAS ===
+        File.open(output_file_path, 'a') do |file|
+          fifth_centroids.each_with_index do |_, idx|
+            nearest_tm2 = nearest_tm2_nodes[idx]
+            nearest_tm1 = nearest_tm1_nodes[idx]
+      
+            file.puts "\n* VIAS #{vias_no}"
+            file.puts "E#{edge_index} n#{nearest_tm2[:index]} n#{nearest_tm1[:index]} w=6.96 h=2.8"
+      
+            vias << {
+              index: edge_index,
+              start: nearest_tm2[:index],
+              end: nearest_tm1[:index],
+              width: 6.96,
+              height: 2.8
+            }
+      
+            vias_no +=1
+            edge_index += 1
+          end
+        end
+      end
+      #puts nearest_tm2_nodes.inspect
+      #puts nearest_tm1_nodes.inspect
+
+      nearest_tm1_nodes_set2 = []
+      nearest_m1_nodes = []
+      
+      if topvia1_shapes != 0
+        # === Generate centroid sets ===
+        centroid_sets = compute_centroid_sets(topvia1)
+      
+        # === Extract 5th centroid from each set ===
+        fifth_centroids = centroid_sets.map.with_index(1) do |set, set_idx|
+          if set[4]
+            #puts "\nSet #{set_idx}: 5th centroid = #{set[4][0].inspect}"
+            set[4][0]
+          else
+            #puts "\nSet #{set_idx}: No 5th centroid (set too small)"
+            nil
+          end
+        end.compact
+      
+        # === Precompute TM1 and M1 nodes in valid ranges ===
+        tm1_nodes_in_range = []
+        tm1_endpoints.each do |ep|
+          tm1_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 5300 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+      
+        m1_nodes_in_range = []
+        m1_endpoints.each do |ep|
+          m1_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 7396 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+      
+        # === Find nearest TM1 and M1 nodes ===
+        fifth_centroids.each_with_index do |centroid, idx|
+          nearest_tm1 = find_nearest_node(centroid, tm1_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest TM1 node #{nearest_tm1.inspect}"
+          nearest_tm1_nodes_set2 << nearest_tm1
+      
+          nearest_m1 = find_nearest_node(centroid, m1_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest M1 node #{nearest_m1.inspect}"
+          nearest_m1_nodes << nearest_m1
+        end
+      
+        # === Write VIAS ===
+        File.open(output_file_path, 'a') do |file|
+          fifth_centroids.each_with_index do |_, idx|
+            nearest_tm1 = nearest_tm1_nodes_set2[idx]
+            nearest_m1 = nearest_m1_nodes[idx]
+      
+            file.puts "\n* VIAS #{vias_no} (TM1-M1)"
+            file.puts "E#{edge_index} n#{nearest_tm1[:index]} n#{nearest_m1[:index]} w=6.96 h=0.85"
+      
+            vias << {
+              index: edge_index,
+              start: nearest_tm1[:index],
+              end: nearest_m1[:index],
+              width: 6.96,
+              height: 0.85
+            }
+      
+            vias_no += 1
+            edge_index += 1
+          end
+        end
+      end
+      
+      
+      nearest_m1_nodes_set2 = []
+      nearest_m2_nodes = []
+
+      if via1_shapes != 0
+        # === Generate centroid sets ===
+        centroid_sets = compute_centroid_sets(via1)
+
+        # === Extract 5th centroid from each set ===
+        fifth_centroids = centroid_sets.map.with_index(1) do |set, set_idx|
+          if set[4]
+            #puts "\nSet #{set_idx}: 5th centroid = #{set[4][0].inspect}"
+            set[4][0]
+          else
+            #puts "\nSet #{set_idx}: No 5th centroid (set too small)"
+            nil
+          end
+        end.compact
+
+        # === Precompute M1 and M2 nodes in valid ranges ===
+        m1_nodes_in_range = []
+        m1_endpoints.each do |ep|
+          m1_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 7396 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+
+        m2_nodes_in_range = []
+        m2_endpoints.each do |ep|
+          m2_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 8425 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+
+        # === Find nearest M1 and M2 nodes ===
+        fifth_centroids.each_with_index do |centroid, idx|
+          nearest_m1 = find_nearest_node(centroid, m1_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest M1 node #{nearest_m1.inspect}"
+          nearest_m1_nodes_set2 << nearest_m1
+
+          nearest_m2 = find_nearest_node(centroid, m2_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest M2 node #{nearest_m2.inspect}"
+          nearest_m2_nodes << nearest_m2
+        end
+
+        # === Write VIAS ===
+        File.open(output_file_path, 'a') do |file|
+          fifth_centroids.each_with_index do |_, idx|
+            nearest_m1 = nearest_m1_nodes_set2[idx]
+            nearest_m2 = nearest_m2_nodes[idx]
+
+            file.puts "\n* VIAS #{vias_no} (M1-M2)"
+            file.puts "E#{edge_index} n#{nearest_m1[:index]} n#{nearest_m2[:index]} w=6.96 h=0.54"
+
+            vias << {
+              index: edge_index,
+              start: nearest_m1[:index],
+              end: nearest_m2[:index],
+              width: 6.96,
+              height: 0.54
+            }
+
+            vias_no += 1
+            edge_index += 1
+          end
+        end
+      end
+
+      nearest_m2_nodes_set2 = []
+      nearest_m3_nodes = []
+
+      if via2_shapes != 0
+        # === Generate centroid sets ===
+        centroid_sets = compute_centroid_sets(via2)
+
+        # === Extract 5th centroid from each set ===
+        fifth_centroids = centroid_sets.map.with_index(1) do |set, set_idx|
+          if set[4]
+            #puts "\nSet #{set_idx}: 5th centroid = #{set[4][0].inspect}"
+            set[4][0]
+          else
+            #puts "\nSet #{set_idx}: No 5th centroid (set too small)"
+            nil
+          end
+        end.compact
+
+        # === Precompute M2 and M3 nodes in valid ranges ===
+        m2_nodes_in_range = []
+        m2_endpoints.each do |ep|
+          m2_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 8425 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+
+        m3_nodes_in_range = []
+        m3_endpoints.each do |ep|
+          m3_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 9455 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+
+        # === Find nearest M2 and M3 nodes ===
+        fifth_centroids.each_with_index do |centroid, idx|
+          nearest_m2 = find_nearest_node(centroid, m2_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest M2 node #{nearest_m2.inspect}"
+          nearest_m2_nodes_set2 << nearest_m2
+
+          nearest_m3 = find_nearest_node(centroid, m3_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest M3 node #{nearest_m3.inspect}"
+          nearest_m3_nodes << nearest_m3
+        end
+
+        # === Write VIAS ===
+        File.open(output_file_path, 'a') do |file|
+          fifth_centroids.each_with_index do |_, idx|
+            nearest_m2 = nearest_m2_nodes_set2[idx]
+            nearest_m3 = nearest_m3_nodes[idx]
+
+            file.puts "\n* VIAS #{vias_no} (M2-M3)"
+            file.puts "E#{edge_index} n#{nearest_m2[:index]} n#{nearest_m3[:index]} w=6.96 h=0.54"
+
+            vias << {
+              index: edge_index,
+              start: nearest_m2[:index],
+              end: nearest_m3[:index],
+              width: 6.96,
+              height: 0.54
+            }
+
+            vias_no += 1
+            edge_index += 1
+          end
+        end
+      end
+
+      nearest_m3_nodes_set2 = []
+      nearest_m4_nodes = []
+
+      if via3_shapes != 0
+        # === Generate centroid sets ===
+        centroid_sets = compute_centroid_sets(via3)
+
+        # === Extract 5th centroid from each set ===
+        fifth_centroids = centroid_sets.map.with_index(1) do |set, set_idx|
+          if set[4]
+            #puts "\nSet #{set_idx}: 5th centroid = #{set[4][0].inspect}"
+            set[4][0]
+          else
+            #puts "\nSet #{set_idx}: No 5th centroid (set too small)"
+            nil
+          end
+        end.compact
+
+        # === Precompute M3 and M4 nodes in valid ranges ===
+        m3_nodes_in_range = []
+        m3_endpoints.each do |ep|
+          m3_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 9455 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+
+        m4_nodes_in_range = []
+        m4_endpoints.each do |ep|
+          m4_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 10485 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+
+        # === Find nearest M3 and M4 nodes ===
+        fifth_centroids.each_with_index do |centroid, idx|
+          nearest_m3 = find_nearest_node(centroid, m3_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest M3 node #{nearest_m3.inspect}"
+          nearest_m3_nodes_set2 << nearest_m3
+
+          nearest_m4 = find_nearest_node(centroid, m4_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest M4 node #{nearest_m4.inspect}"
+          nearest_m4_nodes << nearest_m4
+        end
+
+        # === Write VIAS ===
+        File.open(output_file_path, 'a') do |file|
+          fifth_centroids.each_with_index do |_, idx|
+            nearest_m3 = nearest_m3_nodes_set2[idx]
+            nearest_m4 = nearest_m4_nodes[idx]
+
+            file.puts "\n* VIAS #{vias_no} (M3-M4)"
+            file.puts "E#{edge_index} n#{nearest_m3[:index]} n#{nearest_m4[:index]} w=6.96 h=0.49"
+
+            vias << {
+              index: edge_index,
+              start: nearest_m3[:index],
+              end: nearest_m4[:index],
+              width: 6.96,
+              height: 0.49
+            }
+
+            vias_no += 1
+            edge_index += 1
+          end
+        end
+      end
+     
+      nearest_m4_nodes_set2 = []
+      nearest_m5_nodes = []
+
+      if via4_shapes != 0
+        # === Generate centroid sets ===
+        centroid_sets = compute_centroid_sets(via4)
+
+        # === Extract 5th centroid from each set ===
+        fifth_centroids = centroid_sets.map.with_index(1) do |set, set_idx|
+          if set[4]
+            #puts "\nSet #{set_idx}: 5th centroid = #{set[4][0].inspect}"
+            set[4][0]
+          else
+            #puts "\nSet #{set_idx}: No 5th centroid (set too small)"
+            nil
+          end
+        end.compact
+
+        # === Precompute M4 and M5 nodes in valid ranges ===
+        m4_nodes_in_range = []
+        m4_endpoints.each do |ep|
+          m4_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 10485 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+
+        m5_nodes_in_range = []
+        m5_endpoints.each do |ep|
+          m5_nodes_in_range.concat(
+            nodes.select { |n| n[:z] == 11480 && n[:index] >= ep[:start_node] && n[:index] <= ep[:end_node] }
+          )
+        end
+
+        # === Find nearest M4 and M5 nodes ===
+        fifth_centroids.each_with_index do |centroid, idx|
+          nearest_m4 = find_nearest_node(centroid, m4_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest M4 node #{nearest_m4.inspect}"
+          nearest_m4_nodes_set2 << nearest_m4
+
+          nearest_m5 = find_nearest_node(centroid, m5_nodes_in_range)
+          #puts "Set #{idx + 1}: 5th centroid #{centroid.inspect} -> nearest M5 node #{nearest_m5.inspect}"
+          nearest_m5_nodes << nearest_m5
+        end
+
+        # === Write VIAS ===
+        File.open(output_file_path, 'a') do |file|
+          fifth_centroids.each_with_index do |_, idx|
+            nearest_m4 = nearest_m4_nodes_set2[idx]
+            nearest_m5 = nearest_m5_nodes[idx]
+
+            file.puts "\n* VIAS #{vias_no} (M4-M5)"
+            file.puts "E#{edge_index} n#{nearest_m4[:index]} n#{nearest_m5[:index]} w=6.96 h=0.49"
+
+            vias << {
+              index: edge_index,
+              start: nearest_m4[:index],
+              end: nearest_m5[:index],
+              width: 6.96,
+              height: 0.49
+            }
+
+            vias_no += 1
+            edge_index += 1
+          end
+        end
+      end
+     
+      require 'set'
+      def missing_endpoint_nodes(nearest_nodes, endpoints)
+        # Extract all node indices from nearest_nodes
+        nearest_indices = nearest_nodes.map { |node| node[:index] }.to_set
+      
+        # Collect all start and end nodes from endpoints
+        endpoint_nodes = endpoints.flat_map { |ep| [ep[:start_node], ep[:end_node]] }.uniq
+      
+        # Find which endpoint nodes are missing from nearest_nodes
+        missing_nodes = endpoint_nodes.reject { |node_idx| nearest_indices.include?(node_idx) }
+      
+        missing_nodes.empty? ? nil : missing_nodes
+      end
+
+      missing_count = 0
+      if tm2 != 0
+        missing_nodes = missing_endpoint_nodes(nearest_tm2_nodes, tm2_endpoints)
+        missing_count = missing_nodes ? missing_nodes.size : 0
+        #puts "Number of missing TM2 nodes: #{missing_count}"
+      
+        if missing_count == 1
+          external_1 = missing_nodes.inspect
+      
+          metal_layers = [
+            ['TM1', nearest_tm1_nodes, tm1_endpoints],
+            ['M1', nearest_m1_nodes, m1_endpoints],
+            ['M2', nearest_m2_nodes, m2_endpoints],
+            ['M3', nearest_m3_nodes, m3_endpoints],
+            ['M4', nearest_m4_nodes, m4_endpoints],
+            ['M5', nearest_m5_nodes, m5_endpoints]
+          ]
+      
+          # Get last (lowest) metal layer with shapes
+          layer_name, nearest_nodes, endpoints = metal_layers.reverse.find do |name, _, _|
+            eval(name.downcase) != 0
+          end
+      
+          #puts "Last metal layer with shapes: #{layer_name}"
+      
+          # Call the function and store result in external_2
+          missing_nodes_2 = missing_endpoint_nodes(nearest_nodes, endpoints)
+          external_2 = missing_nodes_2 ? missing_nodes_2.inspect : nil
+      
+          #puts "External 2 (missing nodes from #{layer_name}): #{external_2}"
+          File.open(output_file_path, 'a') do |file| 
+          # External connections
+          file.puts("\n.external n#{external_1} n#{external_2} ")
+          file.puts("\n.freq fmin=1e2 fmax=1e18 ndec=1")
+          file.puts("\n.end")  
+          end
+
+          puts("FastHenry file for Custom inductor is written to #{output_file_path}")
+        end
+      end
+
+      
+      
+      if missing_count == 0
+        metal_layers = [
+          ['TM1', tm1, nearest_tm1_nodes, tm1_endpoints],
+          ['M1', m1, nearest_m1_nodes, m1_endpoints],
+          ['M2', m2, nearest_m2_nodes, m2_endpoints],
+          ['M3', m3, nearest_m3_nodes, m3_endpoints],
+          ['M4', m4, nearest_m4_nodes, m4_endpoints],
+          ['M5', m5, nearest_m5_nodes, m5_endpoints]
+        ]
+      
+        # Find the last (lowest) metal layer with shapes
+        layer_name, shape_count, nearest_nodes, endpoints = metal_layers.reverse.find { |_, count, _, _| count != 0 }
+      
+        # Find missing nodes in the last metal layer
+        missing_nodes = missing_endpoint_nodes(nearest_nodes, endpoints)
+      
+        if missing_nodes && missing_nodes.size >= 2
+          external_1 = missing_nodes[0]
+          external_2 = missing_nodes[1]
+          #puts "External 1: #{external_1}, External 2: #{external_2}"
+          
+          File.open(output_file_path, 'a') do |file| 
+          # External connections
+          file.puts("\n.external n#{external_1} n#{external_2} ")
+          file.puts("\n.freq fmin=1e2 fmax=1e18 ndec=1")
+          file.puts("\n.end")  
+          end
+
+          puts("FastHenry file for Custom inductor is written to #{output_file_path}") 
+        else
+          puts "Less than two external nodes found in #{layer_name}."
+        end
+      end         
+    end
+    
+    
+    fasthenry_exe_path = "C:/Users/singh/FastHenry2-Sam/bin/fasthenry.exe"
+   
+    input_dir = File.dirname(output_file_path)
+    
+    Dir.chdir(input_dir) do
+      # Run FastHenry synchronously (waits for it to finish)
+      cmd = "\"#{fasthenry_exe_path}\" \"#{output_file_path}\""
+      system(cmd)
+    end
+    
+    # Now check and parse output (e.g., inductor3.out)
+    result_file = File.join(input_dir, 'Zc.mat')  # Adjust if needed
+    
+    if File.exist?(result_file)
+      puts "\n Inductance is  ==="
+      File.foreach(result_file) do |line|
+        if match = line.match(/\+\s*([0-9.eE+-]+)j/)
+          imag_value = match[1].to_f  # convert string to float
+          result = imag_value / 628.0
+          puts result
+          break
+        end
+      end 
+    else
+      puts "Output file not found: #{result_file}"
+    end
+  end  
+end

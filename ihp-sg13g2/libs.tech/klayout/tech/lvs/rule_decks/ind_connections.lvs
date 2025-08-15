@@ -35,3 +35,8 @@ connect(ind3_ports, ind_pin)
 connect(ind_pin, topmetal1_con)
 connect(ind3_sub, pwell)
 connect(ind3_sub, nwell_drw)
+
+# cind 
+connect(cind_ports, ind_pin)
+connect(cind_sub, pwell)
+connect(cind_sub, nwell_drw) 

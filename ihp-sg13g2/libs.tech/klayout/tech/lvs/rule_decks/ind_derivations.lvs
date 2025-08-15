@@ -35,6 +35,7 @@ lb_patt = glob_to_case_insensitive_glob("LB")
 lc_patt = glob_to_case_insensitive_glob("LC")
 ind2_patt = glob_to_case_insensitive_glob("inductor2*")
 ind3_patt = glob_to_case_insensitive_glob("inductor3*")
+cind_patt = glob_to_case_insensitive_glob("cinductor*")
 
 ind_edges = ind_drw.edges
 ind_core_ = topmetal2.join(topmetal1).and(ind_drw).merged.not(ind_exc)
@@ -45,6 +46,19 @@ ind_port_lb = ind_ports_.interacting(ind_text.texts(lb_patt))
 ind_lb_tm1 = ind_port_lb.and(topmetal1)
 ind_port_lc = ind_ports_.interacting(ind_text.texts(lc_patt))
 ind_lc_tm2 = ind_port_lc.and(topmetal2)
+ind_TM2 = topmetal2
+ind_TM1 = topmetal1
+ind_M1 = metal1
+ind_M2 = metal2
+ind_M3 = metal3
+ind_M4 = metal4
+ind_M5 = metal5
+ind_via1 = via1_drw 
+ind_via2 = via2_drw
+ind_via3 = via3_drw
+ind_via4 = via4_drw
+ind_topvia1 = topvia1_drw
+ind_topvia2 = topvia2_drw   
 
 # inductor2
 ind2_ports = ind_port_la.join(ind_port_lb)
@@ -55,6 +69,9 @@ ind2_sub1 = pwell.and(ind_drw).interacting(ind2_core)
 ind2_sub2 = pwell_block.and(ind_drw).interacting(ind2_core).sized(1.nm)
 ind2_well = nwell_drw.and(ind_drw).interacting(ind2_core).sized(-1.nm)
 ind2_sub = ind2_sub1.join(ind2_sub2).join(ind2_well)
+ind2_TM2 = ind_TM2
+ind2_TM1 = ind_TM1
+
 # inductor3
 ind3_ports = ind_la_tm1.join(ind_lb_tm1).join(ind_lc_tm2)
 ind3_core = ind_core_.interacting(ind_lb_tm1, 1).interacting(ind_lb_tm1, 1).interacting(ind_lc_tm2, 1)
@@ -64,3 +81,30 @@ ind3_sub1 = pwell.and(ind_drw).interacting(ind3_core)
 ind3_sub2 = pwell_block.and(ind_drw).interacting(ind3_core).sized(1.nm)
 ind3_well = nwell_drw.and(ind_drw).interacting(ind3_core).sized(-1.nm)
 ind3_sub = ind3_sub1.join(ind3_sub2).join(ind3_well)
+ind3_TM2 = ind_TM2
+ind3_TM1 = ind_TM1
+
+# Custom_inductor 
+cind_ports = ind_port_la.join(ind_port_lb)
+cind_core = topmetal2.join(topmetal1).join(metal1).join(metal2).join(metal3).join(metal4).join(metal5).and(ind_drw).merged.not(ind_exc)
+cind_core = cind_core.interacting(ind_port_la, 1).interacting(ind_port_lb, 1)
+cind_mk_ = ind_drw.interacting(text_drw.texts(cind_patt))
+cind_mk = cind_mk_.interacting(cind_core).interacting(cind_ports)
+cind_sub1 = pwell.and(ind_drw).interacting(cind_core)
+cind_sub2 = pwell_block.and(ind_drw).interacting(cind_core).sized(1.nm)
+cind_well = nwell_drw.and(ind_drw).interacting(cind_core).sized(-1.nm)
+cind_sub = cind_sub1.join(cind_sub2).join(cind_well)
+cind_TM2 = ind_TM2
+cind_TM1 = ind_TM1
+cind_M1 = ind_M1
+cind_M2 = ind_M2
+cind_M3 = ind_M3
+cind_M4 = ind_M4
+cind_M5 = ind_M5
+cind_via1 = ind_via1
+cind_via2 = ind_via2
+cind_via3 = ind_via3
+cind_via4 = ind_via4
+cind_topvia1 = ind_topvia1
+cind_topvia2 = ind_topvia2 
+

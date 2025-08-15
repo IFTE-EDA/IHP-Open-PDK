@@ -25,12 +25,14 @@ logger.info('Starting Inductor EXTRACTION')
 
 # ind2
 logger.info('Extracting Inductor2 device')
-extract_devices(GeneralNTerminalExtractor.new('inductor', 2), {
+extract_devices(GeneralNTerminalExtractor.new('inductor2', 2), {
                   'core' => ind2_core,
                   'ports' => ind2_ports,
                   'meas_mk' => topmetal2.and(ind2_core),
                   'dev_mk' => ind2_mk,
-                  'sub_mk' => ind2_sub
+                  'sub_mk' => ind2_sub,
+                  'tm2_mk' => ind2_TM2,
+                  'tm1_mk' => ind2_TM1
                 })
 
 # ind3
@@ -40,5 +42,31 @@ extract_devices(GeneralNTerminalExtractor.new('inductor3', 3), {
                   'ports' => ind3_ports,
                   'meas_mk' => topmetal2.and(ind3_core),
                   'dev_mk' => ind3_mk,
-                  'sub_mk' => ind3_sub
+                  'sub_mk' => ind3_sub,
+                  'tm2_mk' => ind3_TM2,
+                  'tm1_mk' => ind2_TM1
+                })
+                
+# cind 
+logger.info('Extracting Custom_Inductor device')
+extract_devices(GeneralNTerminalExtractor.new('cinductor', 2), {
+                  'core' => cind_core,
+                  'ports' => cind_ports,
+                  'meas_mk' => topmetal2.and(cind_core),
+                  'dev_mk' => cind_mk,
+                  'sub_mk' => cind_sub,
+                  'tm2_mk' => cind_TM2,
+                  'tm1_mk' => cind_TM1,
+                  'm1_mk' => cind_M1,
+                  'm2_mk' => cind_M2,
+                  'm3_mk' => cind_M3,
+                  'm4_mk' => cind_M4,
+                  'm5_mk' => cind_M5,
+                  'topvia2' => cind_topvia2,
+                  'topvia1' => cind_topvia1,
+                  'via1' => cind_via1,
+                  'via2' => cind_via2,
+                  'via3' => cind_via3,
+                  'via4' => cind_via4
+                  
                 })

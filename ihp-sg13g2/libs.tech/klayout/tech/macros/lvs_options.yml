@@ -9,6 +9,9 @@ no_simplify: false
 no_series_res: false
 no_parallel_res: false
 combine_devices: false
+use_fasthenry: false
+fasthenry_exe_path: path to FastHenry2-Sam binary
+fasthenry_file_path: ''
 top_lvl_pins: false
 purge: false
 purge_nets: false
